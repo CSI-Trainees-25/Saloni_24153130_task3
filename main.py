@@ -7,12 +7,9 @@ import sys
 pygame.init()
 screen = pygame.display.set_mode((800, 600))
 pygame.display.set_caption("Space Invaders")
-icon = pygame.image.load("ufo.png")
-pygame.display.set_icon(icon)
 
 background = pygame.image.load('background.jpg').convert_alpha()
 background.set_alpha(150)
-
 mixer.music.load('backgroung.mp3')
 mixer.music.play(-1)
 
@@ -23,13 +20,13 @@ level_up_font = pygame.font.Font('freesansbold.ttf', 48)
 playerImg = pygame.image.load('spaces.png')
 playerX = 370
 playerY = 480
-playerX_change = 0
 
 bulletImg = pygame.image.load('bullet.jpg')
 bulletX = 0
 bulletY = 480
 bulletY_change = 5
 bullet_state = "ready"
+bullet_Sound = mixer.Sound('gun.mp3')
 
 num_of_enemy = 6
 enemyImg = []
@@ -58,8 +55,10 @@ boss_health = 10
 boss_active = False
 bossX_change = 0.2
 
-bullet_sound_file = 'gun.mp3'
-explosion_sound_file = 'explosion.mp3'
+explosion_Sound = mixer.Sound('explosion.mp3')
+
+bullet_channel = mixer.Channel(1)
+explosion_channel = mixer.Channel(2)
 
 score_value = 0
 highest_score = 0
@@ -68,7 +67,6 @@ current_level = 1
 show_levelup_timer = 0
 lives = 3
 game_over_state = False
-
 game_state = "menu"
 
 try:
@@ -76,7 +74,6 @@ try:
         highest_score = int(f.read())
 except:
     highest_score = 0
-
 
 def save_highscore():
     global highest_score
@@ -97,9 +94,9 @@ def fire_bullet(x, y):
     bullet_state = "fire"
     screen.blit(bulletImg, (x + 16, y + 10))
 
-def isCollision(enemyX, enemyY, bulletX, bulletY):
-    distance = math.sqrt((enemyX - bulletX) ** 2 + (enemyY - bulletY) ** 2)
-    return distance < 27
+def isCollision(objX, objY, bulletX, bulletY, threshold=27):
+    distance = math.sqrt((objX - bulletX) ** 2 + (objY - bulletY) ** 2)
+    return distance < threshold
 
 def isPlayerCollision(enemyX, enemyY, playerX, playerY):
     distance = math.sqrt((enemyX - playerX) ** 2 + (enemyY - playerY) ** 2)
@@ -139,7 +136,7 @@ def draw_button(text, x, y, w, h, action=None):
     screen.blit(btn_text, (x + (w - btn_text.get_width()) // 2, y + (h - btn_text.get_height()) // 2))
 
 def reset_game():
-    global playerX, playerY, playerX_change, bulletX, bulletY, bullet_state
+    global playerX, playerY, bulletX, bulletY, bullet_state
     global enemyX, enemyY, enemyX_change, enemyY_change
     global score_value, level, current_level, lives, game_over_state
     global bombX, bombY, bombX_change, bombY_change
@@ -147,7 +144,6 @@ def reset_game():
 
     playerX = 370
     playerY = 480
-    playerX_change = 0
     bulletX = 0
     bulletY = 480
     bullet_state = "ready"
@@ -172,11 +168,9 @@ def reset_game():
     bossX = 200
     bossY = 50
 
-
 def quit_to_menu():
     global game_state
     game_state = "menu"
-
 
 def restart_game():
     reset_game()
@@ -213,8 +207,7 @@ while running:
                 bulletX = playerX
                 bulletY = playerY
                 bullet_state = "fire"
-                bullet_Sound = mixer.Sound(bullet_sound_file)
-                bullet_Sound.play()
+                bullet_channel.play(bullet_Sound)
 
             if bullet_state == "fire":
                 fire_bullet(bulletX, bulletY)
@@ -223,23 +216,20 @@ while running:
                     bulletY = playerY
                     bullet_state = "ready"
 
-            base_speed = 0.3
-            speed_increment = 0.02
             for i in range(num_of_enemy):
                 enemyX[i] += enemyX_change[i]
                 if enemyX[i] <= 0:
-                    enemyX_change[i] = base_speed + (level - 1) * speed_increment
+                    enemyX_change[i] = abs(enemyX_change[i])
                     enemyY[i] += enemyY_change[i]
                 elif enemyX[i] >= 736:
-                    enemyX_change[i] = -(base_speed + (level - 1) * speed_increment)
+                    enemyX_change[i] = -abs(enemyX_change[i])
                     enemyY[i] += enemyY_change[i]
 
                 if isCollision(enemyX[i], enemyY[i], bulletX, bulletY):
                     bulletY = playerY
                     bullet_state = "ready"
                     score_value += 1
-                    explosion_Sound = mixer.Sound(explosion_sound_file)
-                    explosion_Sound.play()
+                    explosion_channel.play(explosion_Sound)
                     if score_value > highest_score:
                         highest_score = score_value
                         save_highscore()
@@ -250,23 +240,22 @@ while running:
                     lives -= 1
                     enemyX[i] = random.randint(0, 736)
                     enemyY[i] = random.randint(50, 150)
+                    explosion_channel.play(explosion_Sound)
                     if lives <= 0:
                         game_over_state = True
 
                 enemy(enemyX[i], enemyY[i], i)
 
             bombX += bombX_change
-            if bombX <= 0:
-                bombX_change = 0.3 + (level - 1) * 0.02
-                bombY += bombY_change
-            elif bombX >= 736:
-                bombX_change = -(0.3 + (level - 1) * 0.02)
+            if bombX <= 0 or bombX >= 736:
+                bombX_change *= -1
                 bombY += bombY_change
 
             if isCollision(bombX, bombY, bulletX, bulletY):
                 bulletY = playerY
                 bullet_state = "ready"
                 lives -= 1
+                explosion_channel.play(explosion_Sound)
                 if lives <= 0:
                     game_over_state = True
                 bombX = random.randint(0, 736)
@@ -290,10 +279,11 @@ while running:
                 if bossX <= 0 or bossX >= 736:
                     bossX_change *= -1
                 boss_draw(bossX, bossY)
-                if isCollision(bossX, bossY, bulletX, bulletY):
+                if isCollision(bossX, bossY, bulletX, bulletY, threshold=40):
                     bulletY = playerY
                     bullet_state = "ready"
                     boss_health -= 1
+                    explosion_channel.play(explosion_Sound)
                     if boss_health <= 0:
                         score_value += 5
                         boss_active = False
@@ -304,7 +294,6 @@ while running:
                 current_level = new_level
                 level = current_level
                 show_levelup_timer = 300
-            level = current_level
 
         else:
             over_text = game_font.render("GAME OVER", True, (255, 0, 0))
