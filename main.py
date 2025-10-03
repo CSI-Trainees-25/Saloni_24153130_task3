@@ -7,7 +7,7 @@ pygame.init()
 screen = pygame.display.set_mode((800, 600))
 
 background = pygame.image.load('kya.jpg').convert_alpha()
-background.set_alpha(100)
+background.set_alpha(150)
 
 mixer.music.load('backgroung.mp3')
 mixer.music.play(-1)
